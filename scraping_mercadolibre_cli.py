@@ -23,11 +23,15 @@ else:
 	sys.exit(1)
 
 if args.paginas:
-	if int(args.paginas) < 1:
+	try:
+		count_pages = int(args.paginas)
+	except BaseException as err:
+		print("Error: el parametro ingresado no es un numero")
+		sys.exit(1)
+	if count_pages < 1:
 		print("Error: Las paginas no pueden ser menor a 1")
 		sys.exit(1)
 	else:
-		count_pages = int(args.paginas)
 		print(f"Se ingresaron {count_pages} paginas")
 else:
 	print(f"No se ingreso cantidad de paginas, por defecto sera 1")

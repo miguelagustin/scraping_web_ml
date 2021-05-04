@@ -190,11 +190,16 @@ class scraping_ml_gui:
         self.label_info_scraping.config(text="Ejecutando Scraping web en MercadoLibre")
         if self.producto_busqueda.get() == "":
             self.label_info_scraping.config(text="Error en el producto a buscar")
-            tkinter.messagebox.showerror("Error campo producto", "No se completo el campo de producto a buscar o esta vacio")
+            tkinter.messagebox.showerror("Error campo producto", "La cantidad de paginas ingresada no es un numero")
             return 1
         url += self.producto_busqueda.get().strip().replace(" ", "-") + "_DisplayType_G"
         if self.cant_paginas.get() == "":
             self.cant_paginas.set(1)
+        try:
+            pag = int(self.cant_paginas.get())
+        except BaseException as err:
+            tkinter.messagebox.showerror("Error paginas", "El parametro ingresado no es un numero")
+            return 1
         t1 = threading.Thread(target=self.scraping_ml, args=(url, self.producto_busqueda.get(), int(self.cant_paginas.get()), os.path.join(os.path.dirname(sys.argv[0]), "output", "busqueda_" + self.producto_busqueda.get().strip().replace(" ", "-") + "_ml.csv")))
         t1.start()
         return 0
