@@ -8,4 +8,4 @@ Forkeado de https://github.com/SantiMenendez19/scraping_web_ml
 
 ## Dependencias
 
-    pip install pint bs4 quantulum3 requests
+    pip install pint bs4 quantulum3 requests pprint
