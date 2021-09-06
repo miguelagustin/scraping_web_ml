@@ -11,10 +11,11 @@ from terminaltables import AsciiTable
 ureg = pint.UnitRegistry()
 
 class Query:
-	def __init__(self, search_term, entity = None, tracked = False, base_unit= None, full=False):
+	def __init__(self, search_term, entity = None, tracked = False, base_unit= None, full=False, shopix=False):
 		self.search_term : str = search_term
 		self.entity : str = entity
 		self.base_unit : str = base_unit
+		self.shopix: bool = True if shopix else False
 		self.tracked : bool = True if tracked else False
 		self.full : bool = True if full else False
 	def __repr__(self):
@@ -84,6 +85,28 @@ def get_meli_publicaciones(query, count_pages):
 		url = link_sig.get('href')
 	return publicaciones
 
+def get_shopix_publicaciones(query):
+	publicaciones = []
+	url = f"https://shopix.com.ar/comprar-{query.search_term}"
+	response = requests.get(url)
+	soup = BeautifulSoup(response.text,'html.parser')
+	pages = int(soup.find_all('a', 'page-numbers')[-2].text)
+	for page in range(0, pages):
+		if page > 0:
+			response = requests.get(url+'_pg_1')
+			soup = BeautifulSoup(response.text, 'html.parser')
+		productos = soup.find_all('li', 'product list-view list-view-small')
+		for publicacion in productos:
+			shopix_url = "https://shopix.com.ar/"+publicacion.find_all(href=True)[1]['href']
+			sub_soup = BeautifulSoup(requests.get(shopix_url).text,'html.parser')
+			data = sub_soup.find_all('strong')
+
+			titulo = sub_soup.find_all('h3')[0].text
+			precio = data[0].next_sibling.strip().replace('$', '')
+			meli_url = sub_soup.find('a', string='Comprar producto')['href']
+			publicaciones.append(Publicacion(titulo, precio, meli_url, query))
+	return publicaciones
+
 
 # TO DO
 
@@ -99,7 +122,8 @@ def create_database():
 		tracked INTEGER,
 		entity TEXT,
 		base_unit TEXT,
-		full INTEGER)''')
+		full INTEGER,
+		shopix INTEGER)''')
 	conn.commit()
 	c.execute('''CREATE TABLE publicaciones
 		(id INTEGER PRIMARY KEY,
@@ -118,8 +142,8 @@ def save_publicaciones(publicaciones):
 	c = conn.cursor()
 	try:
 		query = publicaciones[0].query
-		c.execute("INSERT INTO query VALUES(?,?,?,?,?)", (query.search_term, 1 if query.tracked else 0, query.entity, query.base_unit, 1 if query.full else 0))
-	except (sqlite3.IntegrityError):
+		c.execute("INSERT INTO query VALUES(?,?,?,?,?,?)", (query.search_term, 1 if query.tracked else 0, query.entity, query.base_unit, 1 if query.full else 0, 1 if query.shopix else 0))
+	except sqlite3.IntegrityError:
 		pass
 	for publicacion in publicaciones:
 		c.execute("INSERT or REPLACE INTO publicaciones VALUES(?,?,?,?,?,?)", (publicacion.id, publicacion.titulo, publicacion.precio, publicacion.url, publicacion.query.search_term, publicacion.efficiency))
@@ -130,7 +154,7 @@ def load_queries():
 	conn = sqlite3.connect('publicaciones.db')
 	c = conn.cursor()
 	c.execute("SELECT * FROM query")
-	queries = [Query(query[0], tracked=query[1], entity=query[2], base_unit=query[3], full=query[4]) for query in c.fetchall()]
+	queries = [Query(query[0], tracked=query[1], entity=query[2], base_unit=query[3], full=query[4], shopix=query[5]) for query in c.fetchall()]
 	conn.commit()
 	conn.close()
 	return queries
@@ -154,21 +178,25 @@ def change_tracked_status(query, status):
 	conn.commit()
 	conn.close()
 
-def save_query(query):
-	conn = sqlite3.connect('publicaciones.db')
-	c = conn.cursor()
-	try:
-		c.execute("INSERT INTO query VALUES(?,?)", (query.search_term, 1 if query.tracked else 0, query.entity))
-	except sqlite3.IntegrityError:
-		pass
-	conn.commit()
-	conn.close()
+# def save_query(query):
+# 	conn = sqlite3.connect('publicaciones.db')
+# 	c = conn.cursor()
+# 	try:
+# 		c.execute("INSERT INTO query VALUES(?,?)", (query.search_term, 1 if query.tracked else 0, query.entity))
+# 	except sqlite3.IntegrityError:
+# 		pass
+# 	conn.commit()
+# 	conn.close()
 
 def monitor_new_publicaciones(query):
 	publicaciones = get_meli_publicaciones(query, 100)
+	if query.shopix is True:
+		shopix_publicaciones = get_shopix_publicaciones(query)
+	else:
+		shopix_publicaciones = []
 	old_publicaciones = load_publicaciones(query)
-	new_publicaciones = set(publicaciones) - set(old_publicaciones)
-	save_publicaciones(publicaciones)
+	new_publicaciones = (set(publicaciones) | set(shopix_publicaciones)) - set(old_publicaciones)
+	save_publicaciones(list(set(publicaciones) | set(shopix_publicaciones)))
 	if new_publicaciones:
 		# pprint(new_publicaciones)
 		table_data = [["Titulo", "Precio", "Eficiencia"]] + [[x.titulo, x.precio, x.efficiency] for x in new_publicaciones]
@@ -176,6 +204,8 @@ def monitor_new_publicaciones(query):
 		print(table.table)
 		winsound.PlaySound('notification_sound.wav', winsound.SND_FILENAME)
 		
+# queries_to_watch = load_queries()
+# get_shopix_publicaciones(queries_to_watch[-3])
 
 if __name__ == '__main__':
 	if not os.path.isfile('publicaciones.db'):
